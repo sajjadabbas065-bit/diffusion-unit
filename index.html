@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Gaseous Mass Transfer & Diffusion Unit (Winkelmann Apparatus)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js, OrbitControls & Lucide Icons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #060911; color: #f3f4f6; overflow: hidden; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        .glass-panel { background: rgba(13, 20, 36, 0.85); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, 0.12); }
+        .hotspot-badge { transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+        .hotspot-badge:hover { transform: scale(1.15); }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+    </style>
+</head>
+<body class="w-screen h-screen select-none">
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay Header -->
+    <div class="absolute top-4 left-4 right-4 z-10 flex flex-wrap justify-between items-center gap-3 pointer-events-none">
+        <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 pointer-events-auto shadow-2xl">
+            <div class="p-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                <i data-lucide="box" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                    Gaseous Mass Transfer & Diffusion Unit
+                    <span class="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full font-medium">Ultra High-CAD 3D</span>
+                </h1>
+                <p class="text-[11px] text-gray-400">Winkelmann Method Chemical Process Apparatus</p>
+            </div>
+        </div>
+
+        <!-- Top Right Actions -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btn-autorotate" class="glass-panel px-3 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 transition flex items-center gap-1.5 text-gray-300 shadow-lg">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Auto-Rotate</span>
+            </button>
+            <button id="btn-ppt" class="glass-panel px-3.5 py-2 rounded-xl text-xs font-semibold hover:bg-white/10 transition flex items-center gap-2 text-amber-300 border-amber-500/30 shadow-lg">
+                <i data-lucide="presentation" class="w-4 h-4"></i>
+                <span>PowerPoint Link</span>
+            </button>
+            <button id="btn-reset-cam" class="glass-panel p-2 rounded-xl hover:bg-white/10 transition text-gray-300" title="Reset View">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            </button>
+            <button id="btn-toggle-hotspots" class="glass-panel p-2 rounded-xl hover:bg-white/10 transition text-blue-400" title="Toggle Hotspots">
+                <i data-lucide="map-pin" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Left Controls Sidebar -->
+    <div class="absolute left-4 top-20 bottom-4 w-84 z-10 flex flex-col gap-3 pointer-events-none overflow-hidden">
+        
+        <!-- Experiment Controls Card -->
+        <div class="glass-panel p-4 rounded-2xl pointer-events-auto flex flex-col gap-3 shadow-2xl overflow-y-auto max-h-[58vh]">
+            <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between border-b border-gray-800 pb-1.5">
+                <span>Experiment Parameters</span>
+                <i data-lucide="sliders" class="w-3.5 h-3.5 text-blue-400"></i>
+            </h2>
+
+            <!-- Liquid Type Selector -->
+            <div class="space-y-1">
+                <label class="text-xs text-gray-300 flex justify-between">
+                    <span>Volatile Liquid Species:</span>
+                    <span id="liquid-name-val" class="text-purple-400 font-semibold">Acetone</span>
+                </label>
+                <select id="select-liquid" class="w-full bg-slate-900 border border-slate-700 text-xs text-gray-200 rounded-lg p-1.5 focus:outline-none focus:border-blue-500">
+                    <option value="acetone">Acetone (CH3COCH3)</option>
+                    <option value="methanol">Methanol (CH3OH)</option>
+                    <option value="ethanol">Ethanol (C2H5OH)</option>
+                    <option value="water">Water (H2O)</option>
+                </select>
+            </div>
+
+            <!-- Temperature Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-gray-300 flex items-center gap-1"><i data-lucide="thermometer" class="w-3.5 h-3.5 text-red-400"></i> Water Temp (T)</span>
+                    <span id="temp-val" class="mono text-red-400 font-semibold">45.0 °C</span>
+                </div>
+                <input type="range" id="slider-temp" min="20" max="80" value="45" step="0.5" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500">
+            </div>
+
+            <!-- Elapsed Time Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                    <span class="text-gray-300 flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5 text-cyan-400"></i> Elapsed Time (t)</span>
+                    <span id="time-val" class="mono text-cyan-400 font-semibold">90 min</span>
+                </div>
+                <input type="range" id="slider-time" min="0" max="180" value="90" step="5" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+            </div>
+
+            <!-- Blower Speed -->
+            <div class="space-y-1">
+                <label class="text-xs text-gray-300 flex justify-between">
+                    <span>Air Cross-Blower Velocity:</span>
+                    <span id="blower-val" class="text-emerald-400 font-semibold">Medium</span>
+                </label>
+                <div class="grid grid-cols-3 gap-1">
+                    <button id="btn-blower-low" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-[11px] text-gray-300">Low</button>
+                    <button id="btn-blower-med" class="bg-blue-600 text-white font-semibold py-1 rounded text-[11px]">Med</button>
+                    <button id="btn-blower-high" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-[11px] text-gray-300">High</button>
+                </div>
+            </div>
+
+            <!-- Meniscus Height Output -->
+            <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                <span class="text-gray-400">Liquid Level Drop (Δy):</span>
+                <span id="meniscus-val" class="mono text-emerald-400 font-bold text-xs">2.84 mm</span>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="pt-1 flex items-center gap-2">
+                <button id="btn-play-sim" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-1.5 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30">
+                    <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                    <span>Simulate Diffusion</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Customization & View Modes -->
+        <div class="glass-panel p-3 rounded-2xl pointer-events-auto flex flex-col gap-2 shadow-2xl">
+            <h2 class="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between">
+                <span>Rendering & Camera</span>
+                <i data-lucide="eye" class="w-3.5 h-3.5 text-purple-400"></i>
+            </h2>
+            
+            <div class="grid grid-cols-3 gap-1">
+                <button id="mode-normal" class="bg-blue-600 text-white py-1 rounded text-[10px] font-medium">Realistic</button>
+                <button id="mode-xray" class="bg-slate-800 text-gray-300 hover:bg-slate-700 py-1 rounded text-[10px]">X-Ray</button>
+                <button id="mode-wireframe" class="bg-slate-800 text-gray-300 hover:bg-slate-700 py-1 rounded text-[10px]">Wireframe</button>
+            </div>
+
+            <div class="space-y-1 pt-1">
+                <span class="text-[11px] text-gray-400">Camera Focus Presets:</span>
+                <div class="grid grid-cols-2 gap-1 text-[10px]">
+                    <button onclick="focusCamera('full')" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-gray-300">Full Apparatus</button>
+                    <button onclick="focusCamera('scope')" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-gray-300">Microscope</button>
+                    <button onclick="focusCamera('capillary')" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-gray-300">Capillary Cell</button>
+                    <button onclick="focusCamera('console')" class="bg-slate-800 hover:bg-slate-700 py-1 rounded text-gray-300">Control Box</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Component Inspector Card -->
+        <div id="inspector-card" class="glass-panel p-3 rounded-2xl pointer-events-auto flex-1 flex flex-col justify-between shadow-2xl min-h-[120px]">
+            <div>
+                <span id="insp-badge" class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold rounded-md uppercase tracking-wide border border-blue-500/30">Inspection</span>
+                <h3 id="insp-title" class="text-xs font-bold text-white mt-1 mb-1">Click a 3D Hotspot</h3>
+                <p id="insp-desc" class="text-[11px] text-gray-300 leading-relaxed">Select any floating 3D marker pin to view engineering specs and formulas.</p>
+            </div>
+            <div id="insp-formula" class="mt-2 p-2 bg-slate-900/80 rounded-lg border border-slate-800 text-[10px] mono text-blue-200 hidden">
+                D_AB = (R * T * P_B_LM * z * Δy) / (M_A * P * Δc * Δt)
+            </div>
+        </div>
+    </div>
+
+    <!-- Hotspots Layer -->
+    <div id="hotspots-layer" class="absolute inset-0 pointer-events-none z-20"></div>
+
+    <!-- PowerPoint Modal -->
+    <div id="ppt-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="glass-panel max-w-lg w-full rounded-2xl p-5 border border-gray-700 shadow-2xl relative">
+            <button id="close-ppt-modal" class="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="flex items-center gap-3 mb-3">
+                <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                    <i data-lucide="presentation" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">PowerPoint Slide Integration</h3>
+                    <p class="text-xs text-gray-400">Direct Web Viewer URL for your GitHub repository</p>
+                </div>
+            </div>
+            <div class="space-y-3 text-xs text-gray-300 leading-relaxed">
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                    <p class="text-gray-300">Paste your live GitHub Pages link directly into the PowerPoint <strong>Web Viewer Add-in</strong>:</p>
+                    <div class="p-2 bg-black/60 rounded-lg mono text-cyan-300 text-[11px] select-all border border-slate-800 break-all">
+                        https://sajjadabbas065-bit.github.io/diffusion-unit/
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button id="btn-close-ppt-2" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded-xl font-semibold text-xs transition">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // --- 1. THREE.JS INITIALIZATION ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x060911);
+
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(2.8, 2.1, 3.2);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 + 0.05;
+        controls.minDistance = 0.8;
+        controls.maxDistance = 7.0;
+        controls.target.set(0, 0.38, 0);
+
+        // --- 2. LIGHTING & ENVIRONMENT ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.4);
+        mainLight.position.set(4, 6, 4);
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 2048;
+        mainLight.shadow.mapSize.height = 2048;
+        mainLight.shadow.bias = -0.0001;
+        scene.add(mainLight);
+
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.6);
+        rimLight.position.set(-4, 3, -3);
+        scene.add(rimLight);
+
+        const gridHelper = new THREE.GridHelper(10, 30, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = -0.001;
+        scene.add(gridHelper);
+
+        // --- 3. ADVANCED PBR MATERIALS ---
+        const matAluminum = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.25, metalness: 0.85 });
+        const matSteel = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.15, metalness: 0.95 });
+        const matBrass = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.2, metalness: 0.9 });
+        const matRedJoint = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.35, metalness: 0.2 });
+        const matBlueBack = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4, metalness: 0.1 });
+        const matGlass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, roughness: 0.04, transmission: 0.94, thickness: 0.08, ior: 1.5 });
+        const matTubing = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45, roughness: 0.1, transmission: 0.8 });
+        const matWater = new THREE.MeshPhysicalMaterial({ color: 0x0284c7, transparent: true, opacity: 0.5, roughness: 0.1, transmission: 0.88, thickness: 0.35 });
+        const matBlackPlastic = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.65, metalness: 0.1 });
+        const matConsole = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3 });
+        const matMeniscus = new THREE.MeshPhysicalMaterial({ color: 0xc084fc, transparent: true, opacity: 0.85, roughness: 0.1 });
+        const matWireframe = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+
+        // --- 4. HIGH-DETAILED GEOMETRY GENERATORS ---
+
+        // 8-Slot T-Slot Aluminum Profile Generator
+        function createTSlotProfile(length, width = 0.03) {
+            const shape = new THREE.Shape();
+            const w = width / 2;
+            const slotDepth = 0.005;
+            const slotWidth = 0.006;
+
+            // Outer square with inward T-slots on 4 faces
+            shape.moveTo(-w, -w);
+            shape.lineTo(-slotWidth/2, -w);
+            shape.lineTo(-slotWidth/2, -w + slotDepth);
+            shape.lineTo(slotWidth/2, -w + slotDepth);
+            shape.lineTo(slotWidth/2, -w);
+            shape.lineTo(w, -w);
+
+            shape.lineTo(w, -slotWidth/2);
+            shape.lineTo(w - slotDepth, -slotWidth/2);
+            shape.lineTo(w - slotDepth, slotWidth/2);
+            shape.lineTo(w, slotWidth/2);
+            shape.lineTo(w, w);
+
+            shape.lineTo(slotWidth/2, w);
+            shape.lineTo(slotWidth/2, w - slotDepth);
+            shape.lineTo(-slotWidth/2, w - slotDepth);
+            shape.lineTo(-slotWidth/2, w);
+            shape.lineTo(-w, w);
+
+            shape.lineTo(-w, slotWidth/2);
+            shape.lineTo(-w + slotDepth, slotWidth/2);
+            shape.lineTo(-w + slotDepth, -slotWidth/2);
+            shape.lineTo(-w, -slotWidth/2);
+            shape.closePath();
+
+            const extrudeSettings = { depth: length, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.001, bevelThickness: 0.001 };
+            const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geo.center();
+            return geo;
+        }
+
+        // Coiled Heating Element Generator
+        function createCoiledHeater() {
+            class SpiralCurve extends THREE.Curve {
+                constructor(scale = 1) { super(); this.scale = scale; }
+                getPoint(t) {
+                    const radius = 0.08;
+                    const turns = 6;
+                    const phi = t * Math.PI * 2 * turns;
+                    const x = Math.cos(phi) * radius;
+                    const y = (t - 0.5) * 0.04;
+                    const z = Math.sin(phi) * radius;
+                    return new THREE.Vector3(x, y, z).multiplyScalar(this.scale);
+                }
+            }
+            const path = new SpiralCurve(1);
+            return new THREE.TubeGeometry(path, 120, 0.006, 12, false);
+        }
+
+        // --- 5. BUILD MAIN APPARATUS ASSEMBLY ---
+        const mainGroup = new THREE.Group();
+        scene.add(mainGroup);
+
+        let capLiquidMesh, scopeCarriageGroup, blowerMesh, waterBathMesh;
+        const frameW = 1.15, frameH = 0.95, frameD = 0.85;
+
+        // A. T-Slot Profile Aluminum Frame
+        function buildFrame() {
+            const group = new THREE.Group();
+
+            // 12 T-slot Extruded Rails
+            const horizontalXGeo = createTSlotProfile(frameW);
+            const horizontalZGeo = createTSlotProfile(frameD);
+            const verticalYGeo = createTSlotProfile(frameH);
+
+            const rails = [
+                // Bottom
+                { geo: horizontalXGeo, rot: [0, Math.PI/2, 0], pos: [0, 0.015, frameD/2] },
+                { geo: horizontalXGeo, rot: [0, Math.PI/2, 0], pos: [0, 0.015, -frameD/2] },
+                { geo: horizontalZGeo, rot: [0, 0, 0], pos: [frameW/2, 0.015, 0] },
+                { geo: horizontalZGeo, rot: [0, 0, 0], pos: [-frameW/2, 0.015, 0] },
+                // Top
+                { geo: horizontalXGeo, rot: [0, Math.PI/2, 0], pos: [0, frameH - 0.015, frameD/2] },
+                { geo: horizontalXGeo, rot: [0, Math.PI/2, 0], pos: [0, frameH - 0.015, -frameD/2] },
+                { geo: horizontalZGeo, rot: [0, 0, 0], pos: [frameW/2, frameH - 0.015, 0] },
+                { geo: horizontalZGeo, rot: [0, 0, 0], pos: [-frameW/2, frameH - 0.015, 0] },
+                // Pillars
+                { geo: verticalYGeo, rot: [Math.PI/2, 0, 0], pos: [frameW/2, frameH/2, frameD/2] },
+                { geo: verticalYGeo, rot: [Math.PI/2, 0, 0], pos: [-frameW/2, frameH/2, frameD/2] },
+                { geo: verticalYGeo, rot: [Math.PI/2, 0, 0], pos: [frameW/2, frameH/2, -frameD/2] },
+                { geo: verticalYGeo, rot: [Math.PI/2, 0, 0], pos: [-frameW/2, frameH/2, -frameD/2] }
+            ];
+
+            rails.forEach(r => {
+                const mesh = new THREE.Mesh(r.geo, matAluminum);
+                mesh.rotation.set(...r.rot);
+                mesh.position.set(...r.pos);
+                mesh.castShadow = true;
+                group.add(mesh);
+            });
+
+            // Slotted Corner Bracket Connectors with Bolts
+            const cornerGeo = new THREE.BoxGeometry(0.045, 0.045, 0.045);
+            const boltGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.01, 6); // Hex bolt head
+
+            [[-1,0,-1],[1,0,-1],[-1,0,1],[1,0,1],[-1,1,-1],[1,1,-1],[-1,1,1],[1,1,1]].forEach(c => {
+                const cm = new THREE.Mesh(cornerGeo, matRedJoint);
+                cm.position.set(c[0]*frameW/2, c[1]*frameH + (c[1]===0 ? 0.015 : -0.015), c[2]*frameD/2);
+                group.add(cm);
+
+                // Add hex bolt hardware onto corners
+                const bolt = new THREE.Mesh(boltGeo, matSteel);
+                bolt.position.copy(cm.position).add(new THREE.Vector3(0, 0.025 * (c[1]===0?1:-1), 0));
+                group.add(bolt);
+            });
+
+            // Threaded Rubber Leveling Feet (4)
+            [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(f => {
+                const footGroup = new THREE.Group();
+                const rubberPad = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.02, 16), matBlackPlastic);
+                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.04, 12), matSteel);
+                shaft.position.y = 0.02;
+                footGroup.add(rubberPad);
+                footGroup.add(shaft);
+                footGroup.position.set(f[0]*(frameW/2 - 0.04), -0.01, f[1]*(frameD/2 - 0.04));
+                group.add(footGroup);
+            });
+
+            // Enclosure Acrylic Shielding Panels
+            const backPanel = new THREE.Mesh(new THREE.PlaneGeometry(frameW - 0.02, frameH - 0.02), matBlueBack);
+            backPanel.position.set(0, frameH/2, -frameD/2 + 0.005);
+            group.add(backPanel);
+
+            const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(frameW - 0.02, frameH - 0.02), matGlass);
+            frontGlass.position.set(0, frameH/2, frameD/2 - 0.005);
+            group.add(frontGlass);
+
+            return group;
+        }
+        mainGroup.add(buildFrame());
+
+        // B. Acrylic Water Bath Tank with Submerged Coiled Heater & RTD Sensor
+        const tankGroup = new THREE.Group();
+        tankGroup.position.set(0.05, 0.22, 0);
+
+        // Beveled Tank Walls
+        tankGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.42, 0.48), matGlass));
+
+        // Water Body
+        waterBathMesh = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.38, 0.46), matWater);
+        waterBathMesh.position.set(0, -0.01, 0);
+        tankGroup.add(waterBathMesh);
+
+        // Submerged Coiled Heating Element
+        const heaterMesh = new THREE.Mesh(createCoiledHeater(), matSteel);
+        heaterMesh.rotation.x = Math.PI / 2;
+        heaterMesh.position.set(0, -0.14, 0);
+        tankGroup.add(heaterMesh);
+
+        // Digital RTD Thermistor Sensor Probe
+        const probeGroup = new THREE.Group();
+        probeGroup.position.set(0.22, 0.05, -0.12);
+        const probeStem = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.28, 12), matSteel);
+        const probeTip = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.03, 12), matBrass);
+        probeTip.position.y = -0.13;
+        probeGroup.add(probeStem);
+        probeGroup.add(probeTip);
+        tankGroup.add(probeGroup);
+
+        mainGroup.add(tankGroup);
+
+        // C. Precision Capillary Cell & Concave Meniscus
+        const capGroup = new THREE.Group();
+        capGroup.position.set(0, 0.26, 0);
+
+        // Precision Glass Capillary Outer Body
+        capGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.28, 16), matGlass));
+
+        // Inner Volatile Liquid Surface with Concave Meniscus Geometry
+        const meniscusShape = new THREE.CylinderGeometry(0.007, 0.007, 0.16, 16);
+        meniscusShape.translate(0, -0.04, 0);
+        capLiquidMesh = new THREE.Mesh(meniscusShape, matMeniscus);
+        capGroup.add(capLiquidMesh);
+
+        mainGroup.add(capGroup);
+
+        // D. Ultra-Detailed Traveling Vernier Microscope Assembly
+        const scopeGroup = new THREE.Group();
+        scopeGroup.position.set(-0.28, 0.35, 0.1);
+
+        // Vertical Aluminum Sliding Pillar
+        const scopeRail = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.62, 0.038), matAluminum);
+        scopeGroup.add(scopeRail);
+
+        // Rack-and-Pinion Brass Gear Teeth along column
+        const rackGeo = new THREE.BoxGeometry(0.006, 0.58, 0.012);
+        const rackMesh = new THREE.Mesh(rackGeo, matBrass);
+        rackMesh.position.set(0.018, 0, 0);
+        scopeGroup.add(rackMesh);
+
+        // Microscope Carriage (Sliding along vertical scale)
+        scopeCarriageGroup = new THREE.Group();
+        scopeCarriageGroup.position.set(0.07, 0.04, 0);
+
+        // Optical Tube Barrel
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.22, 16), matSteel);
+        barrel.rotation.z = -Math.PI / 2;
+        scopeCarriageGroup.add(barrel);
+
+        // Eyepiece Lens Assembly
+        const eyepiece = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.08, 16), matBlackPlastic);
+        eyepiece.rotation.z = -Math.PI / 2;
+        eyepiece.position.set(-0.13, 0, 0);
+        scopeCarriageGroup.add(eyepiece);
+
+        // Objective Lens Cone (Pointed at Capillary Meniscus)
+        const objective = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.008, 0.06, 16), matBlackPlastic);
+        objective.rotation.z = -Math.PI / 2;
+        objective.position.set(0.12, 0, 0);
+        scopeCarriageGroup.add(objective);
+
+        // Dual Knurled Fine-Adjustment Micrometer Knobs
+        const knob1 = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.03, 24), matBrass);
+        knob1.position.set(-0.02, 0.06, 0.025);
+        scopeCarriageGroup.add(knob1);
+
+        const knob2 = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.025, 24), matSteel);
+        knob2.position.set(-0.02, 0.06, -0.025);
+        scopeCarriageGroup.add(knob2);
+
+        scopeGroup.add(scopeCarriageGroup);
+        mainGroup.add(scopeGroup);
+
+        // E. Air Cross-Blower & Transparent Tubing
+        blowerMesh = new THREE.Group();
+        blowerMesh.position.set(0.25, 0.34, 0);
+
+        // Blower Nozzle Mount
+        blowerMesh.add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.09, 16), matBlackPlastic));
+
+        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.26, 12), matBlackPlastic);
+        nozzle.rotation.z = Math.PI / 2;
+        nozzle.position.set(-0.13, 0.03, 0);
+        blowerMesh.add(nozzle);
+
+        // Flexible Silicone Air Hose Curve
+        const hoseCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0.04, 0.03, 0),
+            new THREE.Vector3(0.12, 0.08, 0.1),
+            new THREE.Vector3(0.35, -0.1, 0.12),
+            new THREE.Vector3(0.55, -0.18, 0.08)
+        ]);
+        const hoseGeo = new THREE.TubeGeometry(hoseCurve, 30, 0.006, 10, false);
+        const hoseMesh = new THREE.Mesh(hoseGeo, matTubing);
+        blowerMesh.add(hoseMesh);
+
+        mainGroup.add(blowerMesh);
+
+        // F. Digital Control Unit (Right Side Enclosure)
+        const consoleGroup = new THREE.Group();
+        consoleGroup.position.set(0.9, 0.14, 0.08);
+
+        // Aluminum Housing with Side Cooling Vents
+        consoleGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.44), matConsole));
+
+        // Front Faceplate
+        const faceplate = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.4), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 }));
+        faceplate.rotation.y = Math.PI / 2;
+        faceplate.position.set(-0.171, 0, 0);
+        consoleGroup.add(faceplate);
+
+        // LED Displays (Red & Green)
+        const ledRed = new THREE.Mesh(new THREE.PlaneGeometry(0.055, 0.09), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+        ledRed.rotation.y = Math.PI / 2;
+        ledRed.position.set(-0.173, 0.04, -0.1);
+        consoleGroup.add(ledRed);
+
+        const ledGreen = new THREE.Mesh(new THREE.PlaneGeometry(0.055, 0.09), new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+        ledGreen.rotation.y = Math.PI / 2;
+        ledGreen.position.set(-0.173, 0.04, 0.02);
+        consoleGroup.add(ledGreen);
+
+        // Rotary Potentiometer Knobs with Radial Indicator Notches
+        for (let i = 0; i < 2; i++) {
+            const potKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.02, 16), matBrass);
+            potKnob.rotation.z = Math.PI / 2;
+            potKnob.position.set(-0.18, -0.05, -0.1 + i * 0.12);
+            consoleGroup.add(potKnob);
+        }
+
+        // Power Toggle Switch with Light Indicator
+        const switchBase = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.03, 0.02), matSteel);
+        switchBase.position.set(-0.175, -0.05, 0.14);
+        consoleGroup.add(switchBase);
+
+        mainGroup.add(consoleGroup);
+
+        // --- 6. MOLECULAR VAPOR DIFFUSION PARTICLE SYSTEM ---
+        const particleCount = 200;
+        const particleGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 0.01;
+            positions[i * 3 + 1] = 0.18 + Math.random() * 0.22;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 0.01;
+            velocities.push({ x: (Math.random() - 0.5) * 0.001, y: 0.0012 + Math.random() * 0.0018, z: (Math.random() - 0.5) * 0.001 });
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMat = new THREE.PointsMaterial({ color: 0xc084fc, size: 0.014, transparent: true, opacity: 0.85 });
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        mainGroup.add(particleSystem);
+
+        // --- 7. HOTSPOTS DATA & INSPECTION ---
+        const hotspotsData = [
+            { id: 'scope', title: 'Traveling Vernier Microscope', badge: 'Measurement', pos: new THREE.Vector3(-0.21, 0.39, 0.1), desc: 'Vernier microscope equipped with fine micrometer knobs to track meniscus drop (y) to 0.01 mm.', formula: true },
+            { id: 'capillary', title: 'Capillary Diffusion Cell', badge: 'Core Tube', pos: new THREE.Vector3(0, 0.38, 0), desc: 'Precision glass capillary cell. Volatile vapor diffuses through the stagnant gas layer.', formula: true },
+            { id: 'bath', title: 'Isothermal Water Bath', badge: 'Thermal Control', pos: new THREE.Vector3(0.05, 0.15, 0.22), desc: 'Thermostatic water bath with submerged coiled heater and RTD thermistor sensor.', formula: false },
+            { id: 'blower', title: 'Cross-Air Jet Blower', badge: 'Boundary Condition', pos: new THREE.Vector3(0.14, 0.38, 0), desc: 'Maintains zero vapor concentration (C_A2 = 0) at top exit.', formula: false },
+            { id: 'console', title: 'Digital Control Console', badge: 'Electronics', pos: new THREE.Vector3(0.8, 0.22, 0.08), desc: 'Provides PID temp control, LED digital readouts, and blower flow regulation.', formula: false }
+        ];
+
+        const hotspotsLayer = document.getElementById('hotspots-layer');
+        let hotspotsVisible = true;
+
+        hotspotsData.forEach((hs, idx) => {
+            const el = document.createElement('div');
+            el.className = 'absolute pointer-events-auto cursor-pointer hotspot-badge transform -translate-x-1/2 -translate-y-1/2';
+            el.innerHTML = `<div class="flex items-center gap-1 bg-blue-600/90 text-white px-2 py-0.5 rounded-full text-[11px] font-semibold shadow-lg backdrop-blur-sm border border-blue-400/40 hover:bg-blue-500"><span class="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse"></span><span>${idx + 1}. ${hs.title}</span></div>`;
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectHotspot(hs);
+            });
+            hotspotsLayer.appendChild(el);
+            hs.element = el;
+        });
+
+        function updateHotspotsPosition() {
+            if (!hotspotsVisible) {
+                hotspotsData.forEach(h => h.element.style.display = 'none');
+                return;
+            }
+            const tempV = new THREE.Vector3();
+            hotspotsData.forEach(h => {
+                tempV.copy(h.pos).project(camera);
+                if (tempV.z > 1) { h.element.style.display = 'none'; return; }
+                h.element.style.display = 'block';
+                h.element.style.left = `${(tempV.x * 0.5 + 0.5) * window.innerWidth}px`;
+                h.element.style.top = `${(tempV.y * -0.5 + 0.5) * window.innerHeight}px`;
+            });
+        }
+
+        function selectHotspot(hs) {
+            document.getElementById('insp-title').innerText = hs.title;
+            document.getElementById('insp-desc').innerText = hs.desc;
+            document.getElementById('insp-badge').innerText = hs.badge;
+            document.getElementById('insp-formula').classList.toggle('hidden', !hs.formula);
+            controls.target.copy(hs.pos);
+        }
+
+        // --- 8. SIMULATION PHYSICS & WINKELMANN EQUATION ---
+        const liquidProperties = {
+            acetone: { name: 'Acetone', factor: 1.0, color: 0xc084fc },
+            methanol: { name: 'Methanol', factor: 0.82, color: 0x38bdf8 },
+            ethanol: { name: 'Ethanol', factor: 0.64, color: 0x34d399 },
+            water: { name: 'Water', factor: 0.35, color: 0x60a5fa }
+        };
+
+        const sliderTemp = document.getElementById('slider-temp');
+        const sliderTime = document.getElementById('slider-time');
+        const selectLiquid = document.getElementById('select-liquid');
+        let blowerFactor = 1.0;
+
+        function updatePhysics() {
+            const tempC = parseFloat(sliderTemp.value);
+            const timeMin = parseFloat(sliderTime.value);
+            const liquidKey = selectLiquid.value;
+            const liquid = liquidProperties[liquidKey];
+
+            document.getElementById('temp-val').innerText = `${tempC.toFixed(1)} °C`;
+            document.getElementById('time-val').innerText = `${Math.round(timeMin)} min`;
+            document.getElementById('liquid-name-val').innerText = liquid.name;
+
+            // Winklemann equation delta y model
+            const tempK = tempC + 273.15;
+            const diffCoeff = Math.pow(tempK / 298.15, 1.75) * liquid.factor;
+            const deltaY = Math.sqrt(0.045 * diffCoeff * timeMin);
+
+            document.getElementById('meniscus-val').innerText = `${deltaY.toFixed(2)} mm`;
+
+            // Scale liquid mesh inside capillary
+            const scaleY = Math.max(0.18, 1.0 - (deltaY / 14.0));
+            capLiquidMesh.scale.set(1, scaleY, 1);
+            matMeniscus.color.setHex(liquid.color);
+            particleMat.color.setHex(liquid.color);
+
+            // Move microscope carriage down
+            scopeCarriageGroup.position.y = 0.04 - (deltaY * 0.014);
+        }
+
+        sliderTemp.addEventListener('input', updatePhysics);
+        sliderTime.addEventListener('input', updatePhysics);
+        selectLiquid.addEventListener('change', updatePhysics);
+
+        // Blower Speed Controls
+        document.getElementById('btn-blower-low').addEventListener('click', (e) => setBlower('Low', 0.5, e.target));
+        document.getElementById('btn-blower-med').addEventListener('click', (e) => setBlower('Med', 1.0, e.target));
+        document.getElementById('btn-blower-high').addEventListener('click', (e) => setBlower('High', 1.6, e.target));
+
+        function setBlower(name, factor, btn) {
+            blowerFactor = factor;
+            document.getElementById('blower-val').innerText = name;
+            ['btn-blower-low','btn-blower-med','btn-blower-high'].forEach(id => {
+                const b = document.getElementById(id);
+                b.className = 'bg-slate-800 text-gray-300 hover:bg-slate-700 py-1 rounded text-[11px]';
+            });
+            btn.className = 'bg-blue-600 text-white font-semibold py-1 rounded text-[11px]';
+        }
+
+        // Sim Play Loop
+        let isSimulating = false, simInterval = null;
+        document.getElementById('btn-play-sim').addEventListener('click', () => {
+            isSimulating = !isSimulating;
+            const btn = document.getElementById('btn-play-sim');
+            if (isSimulating) {
+                btn.classList.replace('bg-blue-600', 'bg-amber-600');
+                btn.innerHTML = `<i data-lucide="pause" class="w-3.5 h-3.5"></i><span>Pause</span>`;
+                simInterval = setInterval(() => {
+                    let t = parseFloat(sliderTime.value);
+                    if (t >= 180) t = 0;
+                    sliderTime.value = t + 2;
+                    updatePhysics();
+                }, 50);
+            } else {
+                clearInterval(simInterval);
+                btn.classList.replace('bg-amber-600', 'bg-blue-600');
+                btn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5"></i><span>Simulate Diffusion</span>`;
+            }
+            lucide.createIcons();
+        });
+
+        // --- 9. VIEW MODES & CAMERA FOCUS PRESETS ---
+        document.getElementById('mode-normal').addEventListener('click', () => setRenderMode('normal'));
+        document.getElementById('mode-xray').addEventListener('click', () => setRenderMode('xray'));
+        document.getElementById('mode-wireframe').addEventListener('click', () => setRenderMode('wireframe'));
+
+        function setRenderMode(mode) {
+            mainGroup.traverse(child => {
+                if (child.isMesh && child !== capLiquidMesh) {
+                    if (mode === 'wireframe') child.material = matWireframe;
+                    else if (mode === 'xray') {
+                        child.oldMat = child.oldMat || child.material;
+                        child.material = new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22, wireframe: true });
+                    } else {
+                        if (child.oldMat) child.material = child.oldMat;
+                    }
+                }
+            });
+        }
+
+        window.focusCamera = function(preset) {
+            if (preset === 'full') { camera.position.set(2.8, 2.1, 3.2); controls.target.set(0, 0.38, 0); }
+            if (preset === 'scope') { camera.position.set(-0.55, 0.48, 0.65); controls.target.set(-0.21, 0.38, 0.1); }
+            if (preset === 'capillary') { camera.position.set(0.12, 0.42, 0.55); controls.target.set(0, 0.3, 0); }
+            if (preset === 'console') { camera.position.set(1.4, 0.3, 0.65); controls.target.set(0.8, 0.22, 0.08); }
+        };
+
+        // Auto rotate toggle
+        document.getElementById('btn-autorotate').addEventListener('click', (e) => {
+            controls.autoRotate = !controls.autoRotate;
+            controls.autoRotateSpeed = 2.0;
+            e.currentTarget.classList.toggle('text-blue-400', controls.autoRotate);
+        });
+
+        // Hotspots toggle & reset
+        document.getElementById('btn-toggle-hotspots').addEventListener('click', () => {
+            hotspotsVisible = !hotspotsVisible;
+            updateHotspotsPosition();
+        });
+        document.getElementById('btn-reset-cam').addEventListener('click', () => focusCamera('full'));
+
+        // PowerPoint Modal
+        const pptModal = document.getElementById('ppt-modal');
+        document.getElementById('btn-ppt').addEventListener('click', () => pptModal.classList.remove('hidden'));
+        document.getElementById('close-ppt-modal').addEventListener('click', () => pptModal.classList.add('hidden'));
+        document.getElementById('btn-close-ppt-2').addEventListener('click', () => pptModal.classList.add('hidden'));
+
+        // --- 10. ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Particle diffusion sweep animation
+            const posAttr = particleGeo.attributes.position;
+            const tempFactor = parseFloat(sliderTemp.value) / 40.0;
+
+            for (let i = 0; i < particleCount; i++) {
+                let y = posAttr.getY(i) + velocities[i].y * tempFactor;
+                let x = posAttr.getX(i) + velocities[i].x;
+
+                if (y > 0.38) {
+                    x += 0.006 * blowerFactor;
+                }
+
+                if (y > 0.52 || x > 0.35) {
+                    y = 0.18 + Math.random() * 0.04;
+                    x = (Math.random() - 0.5) * 0.01;
+                }
+
+                posAttr.setXYZ(i, x, y, posAttr.getZ(i));
+            }
+            posAttr.needsUpdate = true;
+
+            updateHotspotsPosition();
+            renderer.render(scene, camera);
+        }
+
+        // Resize & Load
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = () => {
+            lucide.createIcons();
+            updatePhysics();
+            animate();
+        };
+    </script>
+</body>
+</html>
